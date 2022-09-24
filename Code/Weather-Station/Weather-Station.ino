@@ -1,18 +1,22 @@
 #include "SevSeg.h" //https://wokwi.com/projects/342943329015562835
 #include "DHT.h"
+#include <Sleep_n0m1.h>
 
 #define DHTPIN 14
 #define DHTTYPE DHT11
 
-
+Sleep sleep;
 SevSeg sevseg;
 DHT dht(DHTPIN, DHTTYPE);
   
-#define PATTERN_CHANGE_TIME 1000
+#define PATTERN_CHANGE_TIME 5000
+#define LOADING_PATTERN "----"
+
 unsigned long timer = millis() - PATTERN_CHANGE_TIME;
 
-byte sensorSelector = 1;
-byte numberofSensors = 2;
+
+const int button = 19;
+const int sensorAlim = 16;
 
 void setup() {
   Serial.begin(9600);
@@ -34,21 +38,43 @@ void setup() {
   // Initialize DHT11 sensors
   Serial.println("Initializing sensors...");
   dht.begin();
+
+  pinMode(button,INPUT);
+  pinMode(sensorAlim,OUTPUT);
 }
 
 void loop() {
+  float temp;
+  float hum;
   
-  if (millis() > (timer + PATTERN_CHANGE_TIME)) {
-    switch(sensorSelector){
-      case 1:
-        sevseg.setChars((String(round(dht.readTemperature()))+"*C").c_str());
-        break;
-      case 2:
-        sevseg.setChars((" "+String(round(dht.readHumidity()*10)/10)+"h").c_str());
-        break;
+  digitalWrite(16,HIGH);
+  sevseg.setChars(LOADING_PATTERN);
+  do{
+    temp = dht.readTemperature();
+    hum = dht.readHumidity();
+    sevseg.refreshDisplay();
+  }while(isnan(temp) || isnan(hum));
+  
+  String stringTemp = String(round(dht.readTemperature()))+"*C";
+  String stringHum = " "+String(round(dht.readHumidity()*10)/10)+"h";
+  
+  timer = millis();
+  sevseg.setChars(stringTemp.c_str());
+  
+  while(millis() < (timer + PATTERN_CHANGE_TIME)){
+    if (millis() > (timer + PATTERN_CHANGE_TIME/2)){
+      sevseg.setChars(stringHum.c_str());
     }
-    sensorSelector = ((sensorSelector++)%numberofSensors)+1;
-    timer = millis();
+    sevseg.refreshDisplay();
   }
-  sevseg.refreshDisplay();
+  sevseg.blank();
+  digitalWrite(sensorAlim,LOW);
+  delay(100); //delay to allow serial to fully print before sleep
+
+  sleep.pwrDownMode(); //set sleep mode
+
+  //Sleep till interrupt pin equals a particular state.
+  //In this case "low" is state 0.
+  sleep.sleepPinInterrupt(button,LOW); //(interrupt Pin Number, interrupt State)
+  
 }
